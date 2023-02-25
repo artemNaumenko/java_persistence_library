@@ -1,5 +1,6 @@
 package sk.tuke.meta.persistence;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,7 +18,7 @@ public interface PersistenceManager {
     /**
      * Create database tables for all managed entity classes.
      */
-    void createTables();
+    void createTables() throws SQLException;
 
     /**
      * Get a specific entity based on the primary key.
