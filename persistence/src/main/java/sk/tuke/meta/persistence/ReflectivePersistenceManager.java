@@ -221,6 +221,7 @@ public class ReflectivePersistenceManager implements PersistenceManager {
                 list.add(obj);
             }
 
+            resultSet.close();
             return list;
         } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
                  NoSuchMethodException | InstantiationException e) {
@@ -232,7 +233,27 @@ public class ReflectivePersistenceManager implements PersistenceManager {
 
     @Override
     public <T> List<T> getBy(Class<T> type, String fieldName, Object value) {
-        return Collections.emptyList();
+        try {
+            String sql = String.format("SELECT * FROM %s WHERE %s = '%s'",
+                    type.getSimpleName(), fieldName, value.toString());
+            Statement statement = connection.createStatement();
+
+
+            ResultSet resultSet = statement.executeQuery(sql);
+            List<T> list = new ArrayList<>();
+
+            while (resultSet.next()){
+                T obj = (T) extractObjectFromResultSet(type, resultSet);
+                list.add(obj);
+            }
+
+            resultSet.close();
+            return list;
+
+        } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
+                 InstantiationException | NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private long saveObject(Object entity, Map<String, Object> fieldNamesWithValuesExceptPrimaryKey)
