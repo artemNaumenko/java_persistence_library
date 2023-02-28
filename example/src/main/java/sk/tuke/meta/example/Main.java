@@ -18,6 +18,8 @@ public class Main {
 
         manager.createTables();
 
+        manager.get(Department.class, 1);
+
 //        Department development = new Department("Development", "DVLP");
 //        Department marketing = new Department("Marketing", "MARK");
 //        Department operations = new Department("Operations", "OPRS");

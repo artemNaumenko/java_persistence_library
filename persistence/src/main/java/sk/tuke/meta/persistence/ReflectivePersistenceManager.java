@@ -10,9 +10,10 @@ import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.Transient;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.sql.Connection;
-import java.sql.SQLException;
+import java.lang.reflect.InvocationTargetException;
+import java.sql.*;
 import java.util.*;
 
 public class ReflectivePersistenceManager implements PersistenceManager {
@@ -39,18 +40,9 @@ public class ReflectivePersistenceManager implements PersistenceManager {
         }
     }
 
-    private Field getIdField(@NotNull Class objectClass){
-        for(Field field: objectClass.getDeclaredFields()){
-            Annotation idAnnotation = field.getDeclaredAnnotation(Id.class);
-            if(idAnnotation != null){
-                return field;
-            }
-        }
 
-        return null;
-    }
 
-    private void entityAnnotationCheck(@NotNull Class objectClass) throws MissingAnnotationException {
+    private void entityAnnotationCheck(@NotNull Class<?> objectClass) throws MissingAnnotationException {
         if(objectClass.getAnnotation(Entity.class) != null){
             return;
         }
@@ -58,7 +50,7 @@ public class ReflectivePersistenceManager implements PersistenceManager {
     }
 
     private void idAnnotationCheck(@NotNull Class objectClass) throws PrimaryKeyException {
-        Field idField = getIdField(objectClass);
+        Field idField = FieldsManager.getIdField(objectClass);
 
         if(idField == null){
             throw new PrimaryKeyException("Entity (" + objectClass.getName() +
@@ -93,7 +85,7 @@ public class ReflectivePersistenceManager implements PersistenceManager {
                 idAnnotationCheck(objectClass);
                 manyToOneAnnotationCheck(objectClass);
             } catch (Exception e) {
-                System.err.println(e.getMessage());
+                System.err.println(e);
                 System.err.println("Table " + objectClass.getSimpleName() + " was not created.");
                 continue;
             }
@@ -110,7 +102,7 @@ public class ReflectivePersistenceManager implements PersistenceManager {
                         str += getSqlTypeForField(field);
                         strings.add(str);
                     } catch (UnhandledTypeException e) {
-                        System.err.println(e.getMessage());
+                        System.err.println(e);
                         System.err.println("Table " + objectClass.getSimpleName() + " was not created.");
                         hasIncorrectFields = true;
                         break;
@@ -120,13 +112,16 @@ public class ReflectivePersistenceManager implements PersistenceManager {
                         if(annotation.annotationType() == Transient.class){
                             break;
                         } else if(annotation.annotationType() == Id.class){
-                            str += "INTEGER PRIMARY KEY";
+                            str += "INTEGER PRIMARY KEY AUTOINCREMENT";
                             strings.add(str);
                         } else if(annotation.annotationType() == ManyToOne.class){
                             str += "INTEGER";
                             strings.add(str);
-                            String freignKeyString = String.format("FOREIGN KEY (%s) REFERENCES %s(%s)",
-                                    field.getName(), field.getName(), getIdField(field.getType()).getName());
+                            String freignKeyString = String.format(
+                                    "FOREIGN KEY (%s) REFERENCES %s(%s)",
+                                    field.getName(),
+                                    field.getName(),
+                                    FieldsManager.getIdField(field.getType()).getName());
 
                             strings.add(freignKeyString);
                         }
@@ -150,9 +145,74 @@ public class ReflectivePersistenceManager implements PersistenceManager {
 
     }
 
+
+    private List<Class> getTypesOfFieldsWithoutPrimaryKey(Class type){
+        List<Class> types = new ArrayList<>();
+        for (Field declaredField : type.getDeclaredFields()) {
+            boolean isPrimaryKey = declaredField.getAnnotation(Id.class) != null;
+            boolean isFieldIgnored = declaredField.getAnnotation(Transient.class) != null;
+
+            if(isPrimaryKey || isFieldIgnored){
+                continue;
+            }
+
+            types.add(declaredField.getType());
+        }
+
+        return types;
+    }
+
+    private Map<String, Object> getMapOfValues(ResultSet resultSet) throws SQLException {
+        Map<String, Object> map = new HashMap<>();
+
+        ResultSetMetaData metaData = resultSet.getMetaData();
+
+        for (int i = 1; i <= metaData.getColumnCount(); i++) {
+            Object value = resultSet.getObject(i);
+            String name = metaData.getColumnName(i);
+
+            map.put(name, value);
+        }
+
+        return map;
+    }
+
+    private void updateMapOfValues(Class<?> type, Map<String, Object> valuesMap, List<String> fieldNamesWithForeignKeys) throws NoSuchFieldException, SQLException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+        for (String fieldName : fieldNamesWithForeignKeys) {
+            Class<?> typeOfField = type.getDeclaredField(fieldName).getType();
+            Optional<?> optional = get(typeOfField, (int) valuesMap.get(fieldName));
+            if(optional.isEmpty()){
+                valuesMap.put(fieldName, null);
+            } else {
+                valuesMap.put(fieldName, optional.get());
+            }
+        }
+    }
+
     @Override
-    public <T> Optional<T> get(Class<T> type, long id) {
-        return Optional.empty();
+    public <T> Optional<T> get(Class<T> type, long id) throws SQLException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException {
+        String name = type.getSimpleName();
+        Field primaryKeyField = FieldsManager.getIdField(type);
+        String select = String.format("SELECT * FROM %s WHERE %s=%s;", name, primaryKeyField.getName(), id);
+
+        ResultSet resultSet = connection.createStatement().executeQuery(select);
+
+        if(resultSet.isClosed()){
+            return Optional.empty();
+        }
+
+        Map<String, Object> valuesMap = getMapOfValues(resultSet);
+        resultSet.close();
+
+        List<String> fieldNamesWithForeignKeys = FieldsManager.getNameOfFieldsWithForeignKey(type);
+        updateMapOfValues(type, valuesMap, fieldNamesWithForeignKeys);
+
+        Constructor<T> constructor = type.getConstructor();
+        T object = constructor.newInstance();
+
+        FieldsManager.setObjectFields(object, valuesMap);
+
+        return Optional.of(object);
     }
 
     @Override

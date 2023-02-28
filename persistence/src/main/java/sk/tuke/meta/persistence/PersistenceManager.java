@@ -1,5 +1,6 @@
 package sk.tuke.meta.persistence;
 
+import java.lang.reflect.InvocationTargetException;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
@@ -27,7 +28,7 @@ public interface PersistenceManager {
      * @param id   primary key (id) value
      * @return the found entity or <code>Optional.empty()</code> if the entity does not exist
      */
-    <T> Optional<T> get(Class<T> type, long id);
+    <T> Optional<T> get(Class<T> type, long id) throws SQLException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException;
 
     /**
      * Get all entities of specified type.

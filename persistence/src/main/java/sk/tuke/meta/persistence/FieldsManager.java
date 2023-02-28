@@ -1,49 +1,69 @@
 package sk.tuke.meta.persistence;
 
+import javax.persistence.Id;
+import javax.persistence.ManyToOne;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public class FieldsManager {
 
-//    static public List<String> getStringsOfVariables(Map<String, Object> variables){
-//        List<String> list = new ArrayList<>();
-//
-//        for(Map.Entry<String, Object> entry : variables.entrySet()){
-//            if(entry.g)
-//        }
-//
-//        return list;
-//    }
-
-    static public Map<String, String> getDeclaredVariablesWithSqlTypes(Object object) {
-        Map<String, String> variables = Collections.emptyMap();
-
-        for(Field field: object.getClass().getFields()){
-            String name = field.getName();
-            Object type  = field.getClass();
-
-            if(type == CharSequence.class){
-                variables.put(name, "TEXT");
-            } else if(type == int.class){
-                variables.put(name, "INTEGER");
-            } else if(type == float.class || type == double.class){
-                variables.put(name, "REAL");
-            } else {
-                System.err.println("Undefined type of variable.");
-            }
-
-        }
-
-        return  variables;
+    static public Object getValueOfField(Object object, Field field) throws IllegalAccessException {
+        field.setAccessible(true);
+        return field.get(object);
     }
 
-    static private Object getValueOfField(Object object, Field field){
-        try {
+    static public Object getObjectPrimaryKey(Object object) throws IllegalAccessException {
+        for (Field field : object.getClass().getDeclaredFields()) {
             field.setAccessible(true);
-            return field.get(object);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
+            if( field.getAnnotation(Id.class) != null) {
+                return field.get(object);
+            }
+        }
+
+        return null;
+    }
+
+    static public void setObjectPrimaryKey(Object object, long id) throws IllegalAccessException {
+        for (Field field : object.getClass().getDeclaredFields()) {
+            field.setAccessible(true);
+            if( field.getAnnotation(Id.class) != null) {
+                field.set(object, id);
+                break;
+            }
+        }
+    }
+
+    static public Field getIdField(Class<?> objectClass){
+        for(Field field: objectClass.getDeclaredFields()){
+            Annotation idAnnotation = field.getDeclaredAnnotation(Id.class);
+            if(idAnnotation != null){
+                return field;
+            }
+        }
+
+        return null;
+    }
+
+    static public List<String> getNameOfFieldsWithForeignKey(Class<?> objectClass){
+        List<String> nameOfFields = new ArrayList<>();
+        for (Field field : objectClass.getDeclaredFields()) {
+            if(field.getAnnotation(ManyToOne.class) != null){
+                nameOfFields.add(field.getName());
+            }
+        }
+        return nameOfFields;
+    }
+
+    static public void setObjectFields(Object object, Map<String, Object> map)
+            throws NoSuchFieldException, IllegalAccessException {
+
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            Field field = object.getClass().getDeclaredField(entry.getKey());
+            field.setAccessible(true);
+            field.set(object, entry.getValue());
         }
     }
 }
