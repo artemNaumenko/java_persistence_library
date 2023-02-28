@@ -2,9 +2,11 @@ package sk.tuke.meta.persistence;
 
 import javax.persistence.Id;
 import javax.persistence.ManyToOne;
+import javax.persistence.Transient;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -65,5 +67,27 @@ public class FieldsManager {
             field.setAccessible(true);
             field.set(object, entry.getValue());
         }
+    }
+
+    static public Map<String, Object> getFieldNamesWithValuesExceptPrimaryKey(Object object) throws IllegalAccessException {
+        Map<String, Object> map = new HashMap<>();
+        for (Field field : object.getClass().getDeclaredFields()) {
+            boolean isPrimaryKey = field.getAnnotation(Id.class) != null;
+            boolean isFieldIgnored = field.getAnnotation(Transient.class) != null;
+
+            if(!isPrimaryKey && !isFieldIgnored){
+                field.setAccessible(true);
+
+                boolean isManyToOne = field.getAnnotation(ManyToOne.class) != null;
+
+                if(isManyToOne){
+                    map.put(field.getName(), getObjectPrimaryKey(field.get(object)));
+                } else {
+                    map.put(field.getName(), field.get(object));
+                }
+            }
+        }
+
+        return map;
     }
 }
