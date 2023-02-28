@@ -172,6 +172,20 @@ public class ReflectivePersistenceManager implements PersistenceManager {
         }
     }
 
+    private Object extractObjectFromResultSet(Class<?> type, ResultSet resultSet) throws SQLException, NoSuchFieldException, IllegalAccessException, InvocationTargetException, InstantiationException, NoSuchMethodException {
+        Map<String, Object> valuesMap = getMapOfValues(resultSet);
+
+        List<String> fieldNamesWithForeignKeys = FieldsManager.getNameOfFieldsWithForeignKey(type);
+        updateMapOfValues(type, valuesMap, fieldNamesWithForeignKeys);
+
+        Constructor<?> constructor = type.getConstructor();
+        Object object = constructor.newInstance();
+
+        FieldsManager.setObjectFields(object, valuesMap);
+
+        return object;
+    }
+
     @Override
     public <T> Optional<T> get(Class<T> type, long id) throws SQLException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException {
         String name = type.getSimpleName();
@@ -184,23 +198,36 @@ public class ReflectivePersistenceManager implements PersistenceManager {
             return Optional.empty();
         }
 
-        Map<String, Object> valuesMap = getMapOfValues(resultSet);
+        T object = (T) extractObjectFromResultSet(type, resultSet);
+
         resultSet.close();
-
-        List<String> fieldNamesWithForeignKeys = FieldsManager.getNameOfFieldsWithForeignKey(type);
-        updateMapOfValues(type, valuesMap, fieldNamesWithForeignKeys);
-
-        Constructor<T> constructor = type.getConstructor();
-        T object = constructor.newInstance();
-
-        FieldsManager.setObjectFields(object, valuesMap);
-
         return Optional.of(object);
     }
 
     @Override
     public <T> List<T> getAll(Class<T> type) {
-        return Collections.emptyList();
+        try {
+            Statement statement = connection.createStatement();
+            ResultSet resultSet = statement.executeQuery("SELECT * FROM " + type.getSimpleName());
+
+            if(resultSet.isClosed()){
+                return Collections.emptyList();
+            }
+
+            List<T> list = new ArrayList<>();
+
+            while (resultSet.next()){
+                T obj = (T) extractObjectFromResultSet(type, resultSet);
+                list.add(obj);
+            }
+
+            return list;
+        } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
+                 NoSuchMethodException | InstantiationException e) {
+            throw new RuntimeException(e);
+        }
+
+
     }
 
     @Override
