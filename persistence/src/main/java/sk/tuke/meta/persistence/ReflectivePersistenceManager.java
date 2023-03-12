@@ -5,10 +5,7 @@ import sk.tuke.meta.persistence.exceptions.MissingAnnotationException;
 import sk.tuke.meta.persistence.exceptions.PrimaryKeyException;
 import sk.tuke.meta.persistence.exceptions.UnhandledTypeException;
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.ManyToOne;
-import javax.persistence.Transient;
+import javax.persistence.*;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -76,7 +73,7 @@ public class ReflectivePersistenceManager implements PersistenceManager {
     }
 
     @Override
-    public void createTables(){ //TODO refactor this function
+    public void createTables(){
         for (Object object : types) {
             Class<?> objectClass = (Class<?>) object;
 
@@ -85,9 +82,7 @@ public class ReflectivePersistenceManager implements PersistenceManager {
                 idAnnotationCheck(objectClass);
                 manyToOneAnnotationCheck(objectClass);
             } catch (Exception e) {
-                System.err.println(e);
-                System.err.println("Table " + objectClass.getSimpleName() + " was not created.");
-                continue;
+                throw new PersistenceException(e);
             }
 
             List<String> strings = new ArrayList<>();
@@ -102,10 +97,7 @@ public class ReflectivePersistenceManager implements PersistenceManager {
                         str += getSqlTypeForField(field);
                         strings.add(str);
                     } catch (UnhandledTypeException e) {
-                        System.err.println(e);
-                        System.err.println("Table " + objectClass.getSimpleName() + " was not created.");
-                        hasIncorrectFields = true;
-                        break;
+                        throw new PersistenceException(e);
                     }
                 } else {
                     for(Annotation annotation: annotations){
@@ -160,10 +152,17 @@ public class ReflectivePersistenceManager implements PersistenceManager {
         return map;
     }
 
-    private void updateMapOfValues(Class<?> type, Map<String, Object> valuesMap, List<String> fieldNamesWithForeignKeys) throws NoSuchFieldException, SQLException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
+    private void updateMapOfValues(Class<?> type, Map<String, Object> valuesMap, List<String> fieldNamesWithForeignKeys) throws NoSuchFieldException{
         for (String fieldName : fieldNamesWithForeignKeys) {
             Class<?> typeOfField = type.getDeclaredField(fieldName).getType();
-            Optional<?> optional = get(typeOfField, (int) valuesMap.get(fieldName));
+            Object value = valuesMap.get(fieldName);
+
+            if(value == null){
+                valuesMap.put(fieldName, null);
+                continue;
+            }
+
+            Optional<?> optional = get(typeOfField, (int) value);
             if(optional.isEmpty()){
                 valuesMap.put(fieldName, null);
             } else {
@@ -178,6 +177,10 @@ public class ReflectivePersistenceManager implements PersistenceManager {
         List<String> fieldNamesWithForeignKeys = FieldsManager.getNameOfFieldsWithForeignKey(type);
         updateMapOfValues(type, valuesMap, fieldNamesWithForeignKeys);
 
+        if(valuesMap.values().stream().allMatch(Objects::isNull)){
+            return null;
+        }
+
         Constructor<?> constructor = type.getConstructor();
         Object object = constructor.newInstance();
 
@@ -187,26 +190,49 @@ public class ReflectivePersistenceManager implements PersistenceManager {
     }
 
     @Override
-    public <T> Optional<T> get(Class<T> type, long id) throws SQLException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException, NoSuchFieldException {
-        String name = type.getSimpleName();
-        Field primaryKeyField = FieldsManager.getIdField(type);
-        String select = String.format("SELECT * FROM %s WHERE %s=%s;", name, primaryKeyField.getName(), id);
+    public <T> Optional<T> get(Class<T> type, long id){
+        try {
+            entityAnnotationCheck(type);
+            idAnnotationCheck(type);
+            manyToOneAnnotationCheck(type);
 
-        ResultSet resultSet = connection.createStatement().executeQuery(select);
+            String name = type.getSimpleName();
+            Field primaryKeyField = FieldsManager.getIdField(type);
+            String select = String.format("SELECT * FROM %s WHERE %s=?;", name, primaryKeyField.getName());
 
-        if(resultSet.isClosed()){
-            return Optional.empty();
+            PreparedStatement preparedStatement = connection.prepareStatement(select);
+            preparedStatement.setLong(1, id);
+
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            if (resultSet.isClosed()) {
+                return Optional.empty();
+            }
+
+            T object = (T) extractObjectFromResultSet(type, resultSet);
+
+            resultSet.close();
+            preparedStatement.close();
+
+            if(object == null){
+                return Optional.empty();
+            } else {
+                return Optional.of(object);
+            }
+
+        } catch (NoSuchFieldException | InvocationTargetException | IllegalAccessException | InstantiationException |
+                 NoSuchMethodException | SQLException | PrimaryKeyException | MissingAnnotationException e) {
+            throw new PersistenceException(e);
         }
-
-        T object = (T) extractObjectFromResultSet(type, resultSet);
-
-        resultSet.close();
-        return Optional.of(object);
     }
 
     @Override
     public <T> List<T> getAll(Class<T> type) {
         try {
+            entityAnnotationCheck(type);
+            idAnnotationCheck(type);
+            manyToOneAnnotationCheck(type);
+
             Statement statement = connection.createStatement();
             ResultSet resultSet = statement.executeQuery("SELECT * FROM " + type.getSimpleName());
 
@@ -224,8 +250,8 @@ public class ReflectivePersistenceManager implements PersistenceManager {
             resultSet.close();
             return list;
         } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
-                 NoSuchMethodException | InstantiationException e) {
-            throw new RuntimeException(e);
+                 NoSuchMethodException | InstantiationException | PrimaryKeyException | MissingAnnotationException e) {
+            throw new PersistenceException(e);
         }
 
 
@@ -234,12 +260,24 @@ public class ReflectivePersistenceManager implements PersistenceManager {
     @Override
     public <T> List<T> getBy(Class<T> type, String fieldName, Object value) {
         try {
-            String sql = String.format("SELECT * FROM %s WHERE %s = '%s'",
-                    type.getSimpleName(), fieldName, value.toString());
-            Statement statement = connection.createStatement();
+            entityAnnotationCheck(type);
+            idAnnotationCheck(type);
+            manyToOneAnnotationCheck(type);
 
+            String sql;
 
-            ResultSet resultSet = statement.executeQuery(sql);
+            if(value == null){
+                sql = String.format("SELECT * FROM %s WHERE %s is ?",
+                        type.getSimpleName(), fieldName);
+            } else {
+                sql = String.format("SELECT * FROM %s WHERE %s = ?",
+                        type.getSimpleName(), fieldName);
+            }
+
+            PreparedStatement preparedStatement = connection.prepareStatement(sql);
+            preparedStatement.setObject(1, value);
+
+            ResultSet resultSet = preparedStatement.executeQuery();
             List<T> list = new ArrayList<>();
 
             while (resultSet.next()){
@@ -251,25 +289,34 @@ public class ReflectivePersistenceManager implements PersistenceManager {
             return list;
 
         } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
-                 InstantiationException | NoSuchMethodException e) {
-            throw new RuntimeException(e);
+                 InstantiationException | NoSuchMethodException | PrimaryKeyException | MissingAnnotationException e) {
+            throw new PersistenceException(e);
         }
     }
 
     private long saveObject(Object entity, Map<String, Object> fieldNamesWithValuesExceptPrimaryKey)
             throws SQLException, IllegalAccessException {
         String fieldNames = String.join(",", fieldNamesWithValuesExceptPrimaryKey.keySet());
-        String values = String.join(",", fieldNamesWithValuesExceptPrimaryKey
+        String placesForValues = String.join(",", fieldNamesWithValuesExceptPrimaryKey
                 .values()
                 .stream()
-                .map(obj -> String.format("'%s'", obj.toString()))
+                .map(obj -> "?")
                 .toList());
 
         String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
-                entity.getClass().getSimpleName(), fieldNames, values);
+                entity.getClass().getSimpleName(), fieldNames, placesForValues);
 
-        Statement statement = connection.createStatement();
-        statement.execute(sql);
+        PreparedStatement statement = connection.prepareStatement(sql);
+
+        int index = 1;
+        Collection<Object> values = fieldNamesWithValuesExceptPrimaryKey.values();
+
+        for (Object value : values) {
+            statement.setObject(index, value);
+            index++;
+        }
+
+        statement.execute();
 
         ResultSet resultSet = statement.getGeneratedKeys();
 
@@ -283,28 +330,58 @@ public class ReflectivePersistenceManager implements PersistenceManager {
     private void updateObject(Object entity, long id, Map<String, Object> fieldNamesWithValuesExceptPrimaryKey)
             throws SQLException {
 
-        String primaryKeyName = FieldsManager.getIdField(entity.getClass()).getName();
+        Field primaryKeyField = FieldsManager.getIdField(entity.getClass());
+
+        if(primaryKeyField == null){
+            throw new PersistenceException("Field with @Id annotation is missing");
+        }
 
         List<String> list = fieldNamesWithValuesExceptPrimaryKey
                 .entrySet()
                 .stream()
-                .map(entry -> String.format("%s = '%s'", entry.getKey(), entry.getValue().toString()))
+                .map(entry -> String.format("%s = ?", entry.getKey()))
                 .toList();
 
-        String sql = String.format("UPDATE %s SET %s WHERE %s = %s",
-                entity.getClass().getSimpleName(), String.join(",", list),
-                primaryKeyName,
-                id);
+        String sql = String.format("UPDATE %s SET %s WHERE %s = ?",
+                entity.getClass().getSimpleName(), String.join(",", list), primaryKeyField.getName());
 
-        Statement statement = connection.createStatement();
-        statement.execute(sql);
+        PreparedStatement statement = connection.prepareStatement(sql);
+
+        int index = 1;
+        Collection<Object> values = fieldNamesWithValuesExceptPrimaryKey.values();
+
+        for (Object value : values) {
+            statement.setObject(index, value);
+            index++;
+        }
+
+        statement.setLong(index, id);
+
+        statement.execute();
         statement.close();
     }
 
     @Override
     public long save(Object entity) {
         try {
-            long id  = (long) FieldsManager.getObjectPrimaryKey(entity);
+            entityAnnotationCheck(entity.getClass());
+            idAnnotationCheck(entity.getClass());
+            manyToOneAnnotationCheck(entity.getClass());
+
+            long id = (long) FieldsManager.getObjectPrimaryKey(entity);;
+
+            List<String> fieldNamesOfForeignKey = FieldsManager.getNameOfFieldsWithForeignKey(entity.getClass());
+            for (String fieldName : fieldNamesOfForeignKey) {
+                Object obj = FieldsManager.getValueOfFieldByName(entity, fieldName);
+                if(obj != null) {
+                    long foreignId = (long) FieldsManager.getObjectPrimaryKey(obj);
+                    if (foreignId == 0) {
+                        save(obj);
+                    }
+                }
+            }
+
+
             Map<String, Object> fieldNamesWithValuesExceptPrimaryKey = FieldsManager
                     .getFieldNamesWithValuesExceptPrimaryKey(entity);
 
@@ -315,12 +392,33 @@ public class ReflectivePersistenceManager implements PersistenceManager {
                 return id;
             }
 
-        } catch (IllegalAccessException | SQLException e) {
-            throw new RuntimeException(e);
+        } catch (IllegalAccessException | SQLException | NoSuchFieldException | MissingAnnotationException |
+                 PrimaryKeyException e) {
+            throw new PersistenceException(e);
         }
     }
 
     @Override
-    public void delete(Object entity) {
+    public void delete(Object entity){
+        try {
+            entityAnnotationCheck(entity.getClass());
+            idAnnotationCheck(entity.getClass());
+            manyToOneAnnotationCheck(entity.getClass());
+
+            long id  = (long) FieldsManager.getObjectPrimaryKey(entity);
+            Field primaryKeyField = FieldsManager.getIdField(entity.getClass());
+
+
+            String className = entity.getClass().getSimpleName();
+
+            String sql = String.format("DELETE FROM %s WHERE %s=?;", className, primaryKeyField.getName());
+            PreparedStatement preparedStatement = connection.prepareStatement(sql);
+            preparedStatement.setLong(1, id);
+
+            preparedStatement.execute();
+            preparedStatement.close();
+        } catch (IllegalAccessException | SQLException | PrimaryKeyException | MissingAnnotationException e){
+            throw new PersistenceException(e);
+        }
     }
 }

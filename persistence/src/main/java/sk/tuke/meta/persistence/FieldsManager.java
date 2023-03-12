@@ -12,12 +12,18 @@ import java.util.Map;
 
 public class FieldsManager {
 
-    static public Object getValueOfField(Object object, Field field) throws IllegalAccessException {
+    static public Object getValueOfFieldByName(Object object, String name) throws IllegalAccessException, NoSuchFieldException {
+        Field field = object.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(object);
     }
 
     static public Object getObjectPrimaryKey(Object object) throws IllegalAccessException {
+
+        if(object == null){
+            return null;
+        }
+
         for (Field field : object.getClass().getDeclaredFields()) {
             field.setAccessible(true);
             if( field.getAnnotation(Id.class) != null) {
