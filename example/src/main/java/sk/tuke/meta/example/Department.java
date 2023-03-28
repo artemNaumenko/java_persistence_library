@@ -1,5 +1,6 @@
 package sk.tuke.meta.example;
 
+import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 
@@ -8,6 +9,8 @@ public class Department {
     @Id
     private long pk;
     private String name;
+
+    @Column(nullable = false, unique = true)
     private String code;
 
     public Department() {

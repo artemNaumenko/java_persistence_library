@@ -19,7 +19,7 @@ public interface PersistenceManager {
     /**
      * Create database tables for all managed entity classes.
      */
-    void createTables() throws SQLException;
+    void createTables() throws SQLException, InvocationTargetException, NoSuchMethodException, IllegalAccessException;
 
     /**
      * Get a specific entity based on the primary key.
