@@ -40,9 +40,7 @@ public class ProxyManager {
 
 
 
-    public static class MyMethodHandler implements MethodHandler{
-
-        private final boolean isFirstCalling = true;
+    private static class MyMethodHandler implements MethodHandler{
         final private Class<?> targetEntity;
         final private long primaryKey;
         final private Connection connection;
