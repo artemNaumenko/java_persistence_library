@@ -1,11 +1,13 @@
 package sk.tuke.meta.processor;
 
+import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
 import javax.persistence.Column;
 import javax.persistence.Id;
+import javax.persistence.ManyToOne;
 import javax.persistence.Table;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
@@ -43,7 +45,7 @@ public class TableManager {
         return element.getSimpleName().toString();
     }
 
-    static VariableElement getIdField(VariableElement element){
+    static VariableElement getIdField(Element element){
         return ((DeclaredType) element.asType()).asElement().getEnclosedElements().stream()
                 .filter(elem -> elem.getKind() == ElementKind.FIELD)
                 .filter(elem -> elem.getAnnotation(Id.class) != null)
@@ -63,5 +65,18 @@ public class TableManager {
         } else {
             throw new Exception("Unhandled type ( " + getFieldName(element) + ") of variable.");
         }
+    }
+
+    static List<VariableElement> getVariables(Element element){
+        return ((DeclaredType) element.asType()).asElement().getEnclosedElements().stream()
+                .filter(elem -> elem.getKind() == ElementKind.FIELD)
+                .map(elem -> (VariableElement) elem)
+                .toList();
+    }
+
+    static List<VariableElement> getManyToOneVariables(Element element){
+        return  getVariables(element).stream()
+                .filter(elem -> elem.getAnnotation(ManyToOne.class) != null)
+                .toList();
     }
 }

@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class FieldsManager {
+public class ReflectionManager {
 
     static public String getTableName(Class<?> type) throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
         if(type.isAnnotationPresent(Table.class)){
@@ -61,7 +61,16 @@ public class FieldsManager {
         return field.isAnnotationPresent(ManyToOne.class);
     }
 
+    static Map<String, Object> getFieldNamesWithValues(Object obj) throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+        Map<String, Object> map = new HashMap<>();
 
+        for (Field field : obj.getClass().getDeclaredFields()) {
+            field.setAccessible(true);
+            map.put(ReflectionManager.getFieldName(field), field.get(obj));
+        }
+
+        return map;
+    }
 
     static public Object getValueOfFieldByName(Object object, String name) throws IllegalAccessException, NoSuchFieldException {
         Field field = object.getClass().getDeclaredField(name);

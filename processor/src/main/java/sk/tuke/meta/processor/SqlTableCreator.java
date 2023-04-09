@@ -1,5 +1,8 @@
 package sk.tuke.meta.processor;
 
+import sk.tuke.meta.processor.exceptions.MissingAnnotationException;
+import sk.tuke.meta.processor.exceptions.PrimaryKeyException;
+
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.RoundEnvironment;
@@ -43,23 +46,24 @@ public class SqlTableCreator extends AbstractProcessor {
         }
 
         try {
-            try (Writer  writer = fileObject.openWriter()) {
+            try (Writer  sqlWriter = fileObject.openWriter()) {
                 for (Element element : elements) {
                     TypeElement typeElement = (TypeElement) element;
                     String sql = generateSqlForTableCreation(typeElement);
-                    writer.write(sql);
+                    sqlWriter.write(sql);
                 }
             }
-
         } catch (Exception e) {
-            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, e.getMessage());
+            processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, e.toString());
         }
 
         return true;
     }
 
     private String generateSqlForTableCreation(TypeElement element) throws Exception {
-        // TODO add checks
+        entityAnnotationCheck(element);
+        idAnnotationCheck(element);
+        manyToOneAnnotationCheck(element);
 
         List<String> strings = new ArrayList<>();
         List<? extends VariableElement> fields = TableManager.getFields(element);
@@ -76,12 +80,13 @@ public class SqlTableCreator extends AbstractProcessor {
             } else if (field.getAnnotation(ManyToOne.class) != null) {
                 str += "INTEGER";
                 strings.add(str);
+                String idFieldName = TableManager.getFieldName(TableManager.getIdField(field));
 
                 String freignKeyString = String.format(
                         "\n    FOREIGN KEY ('%s') REFERENCES '%s'('%s')",
                         TableManager.getFieldName(field),
                         TableManager.getFieldName(field),
-                        TableManager.getFieldName(TableManager.getIdField(field)));
+                        idFieldName);
 
                 strings.add(freignKeyString);
                 continue;
@@ -112,5 +117,35 @@ public class SqlTableCreator extends AbstractProcessor {
         String sql = String.format("CREATE TABLE IF NOT EXISTS '%s' (%s\n);\n\n",
                 TableManager.getTableName(element), String.join(", ", strings));
         return sql;
+    }
+
+    private void entityAnnotationCheck(Element element) throws MissingAnnotationException {
+        if(element.getAnnotation(Entity.class) != null){
+            return;
+        }
+        throw new MissingAnnotationException(element.getClass().getName() + " does not have Entity annotation.");
+    }
+
+    private void idAnnotationCheck(Element element) throws PrimaryKeyException, ClassNotFoundException {
+        VariableElement variableElement = TableManager.getIdField(element);
+
+        if(variableElement == null){
+            throw new PrimaryKeyException("Entity (" + element.getClass().getName() +
+                    ") does not have field with Id annotation.");
+        }
+
+        if(!variableElement.asType().toString().equals("long")){
+            throw new PrimaryKeyException("Field (" + element.getClass().getName() + ") with Id annotation must be long.");
+        }
+
+    }
+
+    private void manyToOneAnnotationCheck(Element element)
+            throws MissingAnnotationException, PrimaryKeyException, ClassNotFoundException {
+
+
+        for(VariableElement variableElement: TableManager.getManyToOneVariables(element)){
+            idAnnotationCheck(variableElement);
+        }
     }
 }
