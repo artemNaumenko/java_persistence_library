@@ -9,10 +9,16 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.util.Map;
+import java.util.Optional;
 
 public class ProxyManager {
 
     private static <T> void setProxyFields(T proxy, T object) throws IllegalAccessException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException {
+        if(object == null){
+
+            return;
+        }
+
         Map<String, Object> fieldsWithValues = ReflectionManager.getFieldNamesWithValues(object);
 
         for (Map.Entry<String, Object> entry : fieldsWithValues.entrySet()) {
@@ -57,8 +63,12 @@ public class ProxyManager {
 
             if(idValue == 0 && primaryKey != 0){
                 ReflectivePersistenceManager manager = new ReflectivePersistenceManager(connection);
-                Object object = manager.get(targetEntity, primaryKey).get();
-                setProxyFields(proxy, object);
+                Optional<T> optional = (Optional<T>) manager.get(targetEntity, primaryKey);
+                if(optional.isEmpty()){
+                    proxy = null;
+                } else {
+                    setProxyFields(proxy, optional.get());
+                }
             }
         }
 

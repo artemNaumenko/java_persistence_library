@@ -1,5 +1,7 @@
 package sk.tuke.meta.persistence;
 
+import javassist.util.proxy.ProxyObject;
+
 import javax.persistence.*;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
@@ -79,14 +81,22 @@ public class ReflectionManager {
     }
 
     static public Object getObjectPrimaryKey(Object object) throws IllegalAccessException {
-
         if(object == null){
             return null;
         }
 
-        for (Field field : object.getClass().getDeclaredFields()) {
+        Field[] fields;
+
+        if(ProxyObject.class.isAssignableFrom(object.getClass())){
+            fields = object.getClass().getSuperclass().getDeclaredFields();
+        } else {
+            fields = object.getClass().getDeclaredFields();
+        }
+
+        for (Field field : fields) {
+            String name = field.getName();
             field.setAccessible(true);
-            if( field.getAnnotation(Id.class) != null) {
+            if(field.getAnnotation(Id.class) != null) {
                 return field.get(object);
             }
         }
@@ -172,4 +182,11 @@ public class ReflectionManager {
 
         return map;
     }
+
+
+    //======================================================================================
+
+
+
+
 }

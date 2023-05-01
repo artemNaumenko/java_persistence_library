@@ -33,7 +33,15 @@ public class TableManager {
                 .toList();
     }
 
-    static String getFieldName(VariableElement element) throws NoSuchMethodException, InvocationTargetException,
+    static List<? extends VariableElement> getNonIdFields(TypeElement element){
+        return element.getEnclosedElements().stream()
+                .filter(elem -> elem.getKind() == ElementKind.FIELD)
+                .filter(elem -> elem.getAnnotation(Id.class) == null)
+                .map(elem -> (VariableElement) elem)
+                .toList();
+    }
+
+    static String getColumnName(VariableElement element) throws NoSuchMethodException, InvocationTargetException,
             IllegalAccessException {
 
         Annotation annotation = element.getAnnotation(Column.class);
@@ -42,6 +50,10 @@ public class TableManager {
             return (fieldName != null && fieldName.length() > 0) ? fieldName : element.getSimpleName().toString();
         }
 
+        return element.getSimpleName().toString();
+    }
+
+    static String getFieldName(VariableElement element){
         return element.getSimpleName().toString();
     }
 
@@ -63,7 +75,7 @@ public class TableManager {
         } else if(type.equals(float.class.getName()) || type.equals(double.class.getName())){
             return "REAL";
         } else {
-            throw new Exception("Unhandled type ( " + getFieldName(element) + ") of variable.");
+            throw new Exception("Unhandled type ( " + getColumnName(element) + ") of variable.");
         }
     }
 

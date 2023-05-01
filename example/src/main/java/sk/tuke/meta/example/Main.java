@@ -1,11 +1,9 @@
 package sk.tuke.meta.example;
 
-import sk.tuke.meta.persistence.PersistenceManager;
-import sk.tuke.meta.persistence.ReflectivePersistenceManager;
+import sk.tuke.meta.persistence.GeneratedPersistenceManager;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.List;
 
 public class Main {
     public static final String DB_PATH = "test.db";
@@ -13,8 +11,11 @@ public class Main {
     public static void main(String[] args) throws Exception {
         Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
 
-        PersistenceManager manager = new ReflectivePersistenceManager(conn);
+        conn.createStatement().execute("DROP TABLE IF EXISTS PersonTable");
+        conn.createStatement().execute("DROP TABLE IF EXISTS Department");
 
+
+        GeneratedPersistenceManager manager = new GeneratedPersistenceManager(conn);
         manager.createTables();
 
         Department development = new Department("Development", "DVLP");
@@ -32,11 +33,20 @@ public class Main {
         manager.save(mrkvicka);
         manager.save(novak);
 
-        List<Person> persons = manager.getAll(Person.class);
-        for (Person person : persons) {
-            System.out.println(person);
-            System.out.println("  " + person.getDepartment());
-        }
+//        List<Person> persons = manager.getAll(Person.class);
+//        for (Person person : persons) {
+//            System.out.println(person);
+//            System.out.println("  " + person.getDepartment());
+//        }
+
+        Person person = manager.get(Person.class, 1).get();
+        Department department = person.getDepartment();
+
+//        department.setCode("NEW");
+        person.setAge(333);
+
+        manager.save(department);
+
         conn.close();
     }
 

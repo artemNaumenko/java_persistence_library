@@ -1,0 +1,323 @@
+package $package;
+
+import sk.tuke.meta.persistence.DAOPersistenceManager;
+import sk.tuke.meta.persistence.EntityDAO;
+import sk.tuke.meta.persistence.ProxyManager;
+
+import java.lang.annotation.Annotation;
+import java.sql.Connection;
+import java.util.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import javax.persistence.FetchType;
+import javax.persistence.ManyToOne;
+import javax.persistence.PersistenceException;
+import sk.tuke.meta.persistence.ReflectionManager;
+import java.sql.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+
+public class ${entity}DAO implements EntityDAO<$entity>{
+    private final DAOPersistenceManager manager;
+    private final Connection connection;
+
+    private static final String SELECT_ALL_COMMAND = "SELECT * FROM '$tableName';";
+    private static final String SELECT_BY_ID_COMMAND = "SELECT * FROM '$tableName' WHERE ${idName}=?;";
+    private static final String SELECT_BY_COMMAND = "SELECT * FROM '$tableName' WHERE %s=?;";
+    private static final String SELECT_BY_NULL_VALUE_COMMAND = "SELECT * FROM '$tableName' WHERE %s is null;";
+
+    private static final String DELETE_COMMAND = "DELETE FROM '${tableName}' WHERE ${idName}=?;";
+
+    private static final String INSERT_COMMAND = "INSERT INTO '$tableName' (#foreach($name in $columnsNames)${name}#if($foreach.hasNext), #end#end) VALUES (#foreach($name in $columnsNames)?#if($foreach.hasNext), #end#end)";
+
+    private static final String UPDATE_COMMAND = "UPDATE '$tableName' SET #foreach($name in $columnsNames)${name}=?#if($foreach.hasNext), #end#end WHERE ${idName}=?";
+
+    public ${entity}DAO(DAOPersistenceManager manager){
+        this.manager = manager;
+        this.connection = manager.getConnection();
+    }
+
+    @Override
+    public void createTable() {
+        try {
+            String sqlCommands = getGeneratedSqlFromFile();
+
+            Statement statement = connection.createStatement();
+            for (String sql : sqlCommands.split(";")) {
+                statement.execute(sql);
+            }
+            statement.close();
+        } catch (SQLException | IOException e) {
+            throw new PersistenceException(e);
+        }
+    }
+
+    @Override
+    public Optional<$entity> get(long id) {
+        try {
+
+            PreparedStatement preparedStatement = connection.prepareStatement(SELECT_BY_ID_COMMAND);
+            preparedStatement.setLong(1, id);
+
+            ResultSet resultSet = preparedStatement.executeQuery();
+
+            if (resultSet.isClosed()) {
+                return Optional.empty();
+            }
+
+            $entity object = ($entity) extractObjectFromResultSet(${entity}.class, resultSet);
+
+            resultSet.close();
+            preparedStatement.close();
+
+            if(object == null){
+                return Optional.empty();
+            } else {
+                return Optional.of(object);
+            }
+
+        } catch (NoSuchFieldException | InvocationTargetException | IllegalAccessException | InstantiationException |
+                 NoSuchMethodException | SQLException e) {
+            throw new PersistenceException(e);
+        }
+    }
+
+    @Override
+    public List<$entity> getAll() {
+        try {
+            Statement statement = connection.createStatement();
+            ResultSet resultSet = statement.executeQuery(SELECT_ALL_COMMAND);
+
+            if(resultSet.isClosed()){
+                return Collections.emptyList();
+            }
+
+            List<$entity> list = new ArrayList<>();
+
+            while (resultSet.next()){
+                $entity obj = ($entity) extractObjectFromResultSet(${entity}.class, resultSet);
+                list.add(obj);
+            }
+
+            resultSet.close();
+            return list;
+        } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
+                 NoSuchMethodException | InstantiationException e) {
+            throw new PersistenceException(e);
+        }
+    }
+
+    @Override
+    public List<$entity> getBy(String fieldName, Object value) {
+        try {
+            PreparedStatement statement;
+
+            if(value == null){
+                statement = connection.prepareStatement(String.format(SELECT_BY_NULL_VALUE_COMMAND, fieldName));
+            } else {
+                statement = connection.prepareStatement(String.format(SELECT_BY_COMMAND, fieldName));
+                statement.setObject(1, value);
+            }
+
+            ResultSet resultSet = statement.executeQuery();
+            List<$entity> list = new ArrayList<>();
+
+
+            while (resultSet.next()){
+                $entity obj = ($entity) extractObjectFromResultSet(${entity}.class, resultSet);
+                list.add(obj);
+            }
+
+            resultSet.close();
+            statement.close();
+            return list;
+
+        } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
+                 InstantiationException | NoSuchMethodException e) {
+            throw new PersistenceException(e);
+        }
+    }
+
+    @Override
+    public long save(Object entity) {
+        try {
+            long id = (long) ReflectionManager.getObjectPrimaryKey(entity);
+
+            List<String> fieldNamesOfForeignKey = ReflectionManager.getNameOfFieldsWithForeignKey(${entity}.class);
+            for (String fieldName : fieldNamesOfForeignKey) {
+                Object obj = ReflectionManager.getValueOfFieldByName(entity, fieldName);
+                if(obj != null) {
+                    long foreignId = (long) ReflectionManager.getObjectPrimaryKey(obj);
+                    if (foreignId == 0) {
+                        manager.getDAO(obj.getClass()).save(obj);
+                    }
+                }
+            }
+
+
+            Map<String, Object> fieldNamesWithValuesExceptPrimaryKey = ReflectionManager
+                    .getFieldNamesWithValuesExceptPrimaryKey(entity);
+
+            if(id == 0){
+                return save${entity}(entity, fieldNamesWithValuesExceptPrimaryKey);
+            } else {
+                update${entity}(entity, id, fieldNamesWithValuesExceptPrimaryKey);
+                return id;
+            }
+
+        } catch (IllegalAccessException | SQLException | NoSuchFieldException | InvocationTargetException
+                 | NoSuchMethodException e) {
+            throw new PersistenceException(e);
+        }
+    }
+
+    @Override
+    public void delete(Object entity) {
+        try {
+            long id  = (long) ReflectionManager.getObjectPrimaryKey(entity);
+            Field primaryKeyField = ReflectionManager.getIdField(${entity}.class);
+
+            PreparedStatement preparedStatement = connection.prepareStatement(DELETE_COMMAND);
+            preparedStatement.setLong(1, id);
+
+            preparedStatement.execute();
+            preparedStatement.close();
+        } catch (IllegalAccessException | SQLException e){
+            throw new PersistenceException(e);
+        }
+    }
+
+    private String getGeneratedSqlFromFile() throws IOException {
+        InputStream inputStream = ClassLoader.getSystemResourceAsStream("create" + ${entity}.class.getSimpleName() + "Table.sql");
+
+        InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
+        BufferedReader reader = new BufferedReader(inputStreamReader);
+        StringBuilder stringBuilder = new StringBuilder();
+        String line;
+
+        while ((line = reader.readLine()) != null) {
+            stringBuilder.append(line).append('\n');
+        }
+
+        String fileContent = stringBuilder.toString().trim();
+
+        System.out.println(fileContent);
+
+        inputStream.close();
+        inputStreamReader.close();
+        reader.close();
+
+        return fileContent;
+    }
+
+    private Object extractObjectFromResultSet(Class<?> type, ResultSet resultSet) throws SQLException,
+            NoSuchFieldException, IllegalAccessException, InvocationTargetException,
+            InstantiationException, NoSuchMethodException {
+
+        Map<String, Object> valuesMap = getMapOfValues(resultSet);
+
+        List<String> fieldNamesWithForeignKeys = ReflectionManager.getNameOfFieldsWithForeignKey(type);
+        updateMapOfValues(type, valuesMap, fieldNamesWithForeignKeys);
+
+        if(valuesMap.values().stream().allMatch(Objects::isNull)){
+            return null;
+        }
+
+        Constructor<?> constructor = type.getConstructor();
+        Object object = constructor.newInstance();
+
+        ReflectionManager.setObjectFields(object, valuesMap);
+
+        return object;
+    }
+
+    private Map<String, Object> getMapOfValues(ResultSet resultSet) throws SQLException {
+        Map<String, Object> map = new HashMap<>();
+
+        ResultSetMetaData metaData = resultSet.getMetaData();
+
+        for (int i = 1; i <= metaData.getColumnCount(); i++) {
+            Object value = resultSet.getObject(i);
+            String name = metaData.getColumnName(i);
+
+            map.put(name, value);
+        }
+
+        return map;
+    }
+
+    private void updateMapOfValues(Class<?> type, Map<String, Object> valuesMap, List<String> fieldNamesWithForeignKeys)
+            throws NoSuchFieldException, NoSuchMethodException, InvocationTargetException,
+                    IllegalAccessException, InstantiationException {
+
+        for (String fieldName : fieldNamesWithForeignKeys) {
+            Field field = type.getDeclaredField(fieldName);
+            Class<?> typeOfField = field.getType();
+            Object value = valuesMap.get(fieldName);
+
+            if(value == null){
+                valuesMap.put(fieldName, null);
+                continue;
+            }
+
+            Annotation annotation = field.getAnnotation(ManyToOne.class);
+            FetchType fetchType = (FetchType) annotation.getClass().getMethod("fetch").invoke(annotation);
+            if(fetchType.equals(FetchType.LAZY)){
+                Class<?> targetClass = (Class<?>) annotation.getClass().getMethod("targetEntity").invoke(annotation);
+                long id = (int) valuesMap.get(fieldName);
+
+                Object proxy = ProxyManager.createProxy(connection, targetClass, id);
+                valuesMap.put(fieldName, proxy);
+
+                continue;
+            }
+
+            Optional<?> optional = manager.getDAO(typeOfField).get((int) value);
+            if(optional.isEmpty()){
+                valuesMap.put(fieldName, null);
+            } else {
+                valuesMap.put(fieldName, optional.get());
+            }
+        }
+    }
+
+    private long save${entity}(Object ${entityLowerCase}, Map<String, Object> fieldNamesWithValuesExceptPrimaryKey)
+            throws SQLException, IllegalAccessException{
+
+        PreparedStatement statement = connection.prepareStatement(INSERT_COMMAND);
+
+        #foreach($name in $fieldNames)
+        statement.setObject($foreach.count, fieldNamesWithValuesExceptPrimaryKey.get("$name"));
+        #end
+
+        statement.execute();
+
+        ResultSet resultSet = statement.getGeneratedKeys();
+
+        long newId = resultSet.getLong(1);
+        ReflectionManager.setObjectPrimaryKey(${entityLowerCase}, newId);
+
+        resultSet.close();
+        return newId;
+    }
+
+    private void update${entity}(Object ${entityLowerCase}, long id, Map<String, Object> fieldNamesWithValuesExceptPrimaryKey)
+            throws SQLException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+
+        PreparedStatement statement = connection.prepareStatement(UPDATE_COMMAND);
+
+        #foreach( $name in $fieldNames )
+        statement.setObject($foreach.count, fieldNamesWithValuesExceptPrimaryKey.get("$name"));
+        #if( !$foreach.hasNext )
+        #set( $nextIndex = ${foreach.count} +1 )
+        statement.setLong($nextIndex, id);
+        #end
+        #end
+
+        statement.execute();
+        statement.close();
+    }
+}

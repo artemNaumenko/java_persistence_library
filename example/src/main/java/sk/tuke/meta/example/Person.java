@@ -10,7 +10,7 @@ public class Person {
     private long id;
     private String surname;
 
-    @Column(nullable = false, unique = false)
+    @Column(name = "personName" ,nullable = false, unique = false)
     private String name;
     private int age;
 
