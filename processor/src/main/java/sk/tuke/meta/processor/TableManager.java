@@ -5,10 +5,7 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.DeclaredType;
-import javax.persistence.Column;
-import javax.persistence.Id;
-import javax.persistence.ManyToOne;
-import javax.persistence.Table;
+import javax.persistence.*;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
@@ -89,6 +86,25 @@ public class TableManager {
     static List<VariableElement> getManyToOneVariables(Element element){
         return  getVariables(element).stream()
                 .filter(elem -> elem.getAnnotation(ManyToOne.class) != null)
+                .toList();
+    }
+
+    static List<VariableElement> getManyToOneVariablesDefaultFetching(Element element){
+        return  getManyToOneVariables(element).stream()
+                .filter(elem -> elem.getAnnotation(ManyToOne.class).fetch() != FetchType.LAZY)
+                .toList();
+    }
+
+    static List<VariableElement> getManyToOneVariablesLazyFetching(Element element){
+        return  getManyToOneVariables(element).stream()
+                .filter(elem -> elem.getAnnotation(ManyToOne.class).fetch() == FetchType.LAZY)
+                .toList();
+    }
+
+    static  List<VariableElement> getNonManyToOneFields(Element element){
+        return getVariables(element)
+                .stream()
+                .filter(elem -> elem.getAnnotation(ManyToOne.class) == null)
                 .toList();
     }
 }

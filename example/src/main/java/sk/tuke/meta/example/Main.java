@@ -4,6 +4,7 @@ import sk.tuke.meta.persistence.GeneratedPersistenceManager;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.util.List;
 
 public class Main {
     public static final String DB_PATH = "test.db";
@@ -33,19 +34,19 @@ public class Main {
         manager.save(mrkvicka);
         manager.save(novak);
 
-//        List<Person> persons = manager.getAll(Person.class);
-//        for (Person person : persons) {
-//            System.out.println(person);
-//            System.out.println("  " + person.getDepartment());
-//        }
+        List<Person> persons = manager.getAll(Person.class);
+        for (Person person : persons) {
+            System.out.println(person);
+            System.out.println("  " + person.getDepartment());
+        }
 
-        Person person = manager.get(Person.class, 1).get();
-        Department department = person.getDepartment();
-
-//        department.setCode("NEW");
-        person.setAge(333);
-
-        manager.save(department);
+//        Person person = manager.get(Person.class, 1).get();
+//        Department department = person.getDepartment();
+//
+////        department.setCode("NEW");
+//        person.setAge(333);
+//
+//        manager.save(department);
 
         conn.close();
     }

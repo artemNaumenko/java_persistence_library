@@ -125,8 +125,69 @@ public class CodeGeneratingProcessor extends AbstractProcessor {
                     .toList();
 
             List<String> fieldNames = TableManager.getNonIdFields(entity).stream()
-                    .map(field -> TableManager.getFieldName(field))
+                    .map(field -> capitalize(TableManager.getFieldName(field)))
                     .toList();
+
+            List<String> nonReferenceFields = TableManager.getNonManyToOneFields(entity).stream()
+                    .filter(field -> field.getAnnotation(Id.class) == null)
+                    .map(field -> capitalize(TableManager.getFieldName(field)))
+                    .toList();
+
+            List<String> nonReferenceFieldsWithId = TableManager.getNonManyToOneFields(entity).stream()
+                    .map(field -> capitalize(TableManager.getFieldName(field)))
+                    .map(name -> capitalize(name))
+                    .toList();
+
+            List<String> referenceFields = TableManager.getManyToOneVariables(entity).stream()
+                    .map(field -> capitalize(TableManager.getFieldName(field)))
+                    .toList();
+
+            List<String> referenceFieldTypes = TableManager.getManyToOneVariables(entity).stream()
+                    .map(field -> field.asType().toString())
+                    .toList();
+
+            List<String> nonReferenceFieldTypes = TableManager.getNonManyToOneFields(entity).stream()
+                    .map(field -> field.asType().toString())
+                    .toList();
+
+            List<String> referenceFieldIds = TableManager.getManyToOneVariables(entity).stream()
+                    .map(elem -> TableManager.getIdField(elem).getSimpleName().toString())
+                    .map(name -> capitalize(name))
+                    .toList();
+
+            List<String> nonReferenceColumns = TableManager.getNonManyToOneFields(entity)
+                    .stream()
+                    .map(field -> {
+                        try {
+                            return TableManager.getColumnName(field);
+                        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                            throw new PersistenceException(e);
+                        }
+                    })
+                    .toList();
+
+            List<String> referenceColumnWithDefaultFetching = TableManager.getManyToOneVariablesDefaultFetching(entity)
+                    .stream()
+                    .map(field -> {
+                        try {
+                            return TableManager.getColumnName(field);
+                        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                            throw new PersistenceException(e);
+                        }
+                    })
+                    .toList();
+
+            List<String> referenceFieldsWithDefaultFetchingTypes = TableManager.getManyToOneVariablesDefaultFetching(entity)
+                    .stream()
+                    .map(field -> field.asType().toString())
+                    .toList();
+
+            List<String> referenceFieldsWithDefaultFetching = TableManager.getManyToOneVariablesDefaultFetching(entity)
+                    .stream()
+                    .map(field -> TableManager.getFieldName(field))
+                    .map(name -> capitalize(name))
+                    .toList();
+
 
             VelocityContext context = new VelocityContext();
             context.put("package", entity.getEnclosingElement().toString());
@@ -137,6 +198,17 @@ public class CodeGeneratingProcessor extends AbstractProcessor {
             context.put("capitalizedIdName", capitalize(TableManager.getFieldName(TableManager.getIdField(entity))));
             context.put("columnsNames", columnsNames);
             context.put("fieldNames", fieldNames);
+            context.put("nonReferenceFields", nonReferenceFields);
+            context.put("referenceFields", referenceFields);
+            context.put("referenceFieldTypes", referenceFieldTypes);
+            context.put("referenceFieldIds", referenceFieldIds);
+            context.put("nonReferenceColumns", nonReferenceColumns);
+            context.put("nonReferenceFieldsWithId", nonReferenceFieldsWithId);
+            context.put("nonReferenceFieldTypes", nonReferenceFieldTypes);
+            context.put("referenceColumnWithDefaultFetching", referenceColumnWithDefaultFetching);
+            context.put("referenceFieldsWithDefaultFetchingTypes", referenceFieldsWithDefaultFetchingTypes);
+            context.put("referenceFieldsWithDefaultFetching", referenceFieldsWithDefaultFetching);
+
 
             template.merge(context, writer);
         } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {

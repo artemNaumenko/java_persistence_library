@@ -14,6 +14,8 @@ import java.io.InputStreamReader;
 import javax.persistence.FetchType;
 import javax.persistence.ManyToOne;
 import javax.persistence.PersistenceException;
+import javax.swing.*;
+
 import sk.tuke.meta.persistence.ReflectionManager;
 import java.sql.*;
 import java.lang.reflect.Constructor;
@@ -55,6 +57,34 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         }
     }
 
+    private ${entity} resultSetTo${entity}(ResultSet resultSet) throws SQLException {
+        ${entity} ${entity.toLowerCase()} = new ${entity}();
+
+
+    #foreach($column in $nonReferenceColumns)
+        #set( $index = $foreach.count - 1 )
+        #if(${nonReferenceFieldTypes.get($index)} == "long")
+        ${nonReferenceFieldTypes.get($index)} ${column.toLowerCase()} = resultSet.getLong("${column}");
+        #else
+        ${nonReferenceFieldTypes.get($index)} ${column.toLowerCase()} = (${nonReferenceFieldTypes.get($index)}) resultSet.getObject("${column}");
+        #end
+        ${entity.toLowerCase()}.set${nonReferenceFieldsWithId.get($index)}(${column.toLowerCase()});
+
+    #end
+
+    #foreach($column in $referenceColumnWithDefaultFetching)
+        #set( $index = $foreach.count - 1 )
+        long ${column.toLowerCase()}Id = resultSet.getLong("${column}");
+        Optional<${referenceFieldsWithDefaultFetchingTypes.get($index)}> optional = manager.getDAO(${referenceFieldsWithDefaultFetchingTypes.get($index)}.class).get(${column.toLowerCase()}Id);
+        if(optional.isEmpty()){
+            ${entity.toLowerCase()}.set${referenceFieldsWithDefaultFetching.get($index)}(null);
+        } else {
+            ${entity.toLowerCase()}.set${referenceFieldsWithDefaultFetching.get($index)}(optional.get());
+        }
+    #end
+
+    }
+
     @Override
     public Optional<$entity> get(long id) {
         try {
@@ -68,7 +98,7 @@ public class ${entity}DAO implements EntityDAO<$entity>{
                 return Optional.empty();
             }
 
-            $entity object = ($entity) extractObjectFromResultSet(${entity}.class, resultSet);
+            $entity object = resultSetTo${entity}(resultSet);
 
             resultSet.close();
             preparedStatement.close();
@@ -79,8 +109,7 @@ public class ${entity}DAO implements EntityDAO<$entity>{
                 return Optional.of(object);
             }
 
-        } catch (NoSuchFieldException | InvocationTargetException | IllegalAccessException | InstantiationException |
-                 NoSuchMethodException | SQLException e) {
+        } catch (SQLException e) {
             throw new PersistenceException(e);
         }
     }
@@ -144,31 +173,28 @@ public class ${entity}DAO implements EntityDAO<$entity>{
     @Override
     public long save(Object entity) {
         try {
-            long id = (long) ReflectionManager.getObjectPrimaryKey(entity);
+            ${entity} ${entityLowerCase} = (${entity}) entity;
+            long id = ${entityLowerCase}.get${capitalizedIdName}();
 
-            List<String> fieldNamesOfForeignKey = ReflectionManager.getNameOfFieldsWithForeignKey(${entity}.class);
-            for (String fieldName : fieldNamesOfForeignKey) {
-                Object obj = ReflectionManager.getValueOfFieldByName(entity, fieldName);
-                if(obj != null) {
-                    long foreignId = (long) ReflectionManager.getObjectPrimaryKey(obj);
-                    if (foreignId == 0) {
-                        manager.getDAO(obj.getClass()).save(obj);
-                    }
+        #foreach($name in $referenceFields)
+            #set( $index = $foreach.count - 1 )
+            ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entityLowerCase}.get${name}();
+            if(${name.toLowerCase()} != null) {
+                long ${name.toLowerCase()}Id = ${name.toLowerCase()}.get${referenceFieldIds.get($index)}();
+                if (${name.toLowerCase()}Id == 0) {
+                    manager.getDAO(${referenceFieldTypes.get($index)}.class).save(${name.toLowerCase()});
                 }
             }
 
-
-            Map<String, Object> fieldNamesWithValuesExceptPrimaryKey = ReflectionManager
-                    .getFieldNamesWithValuesExceptPrimaryKey(entity);
-
+        #end
             if(id == 0){
-                return save${entity}(entity, fieldNamesWithValuesExceptPrimaryKey);
+                return save${entity}(${entityLowerCase});
             } else {
-                update${entity}(entity, id, fieldNamesWithValuesExceptPrimaryKey);
+                update${entity}(${entityLowerCase});
                 return id;
             }
 
-        } catch (IllegalAccessException | SQLException | NoSuchFieldException | InvocationTargetException
+        } catch (IllegalAccessException | SQLException | InvocationTargetException
                  | NoSuchMethodException e) {
             throw new PersistenceException(e);
         }
@@ -177,15 +203,15 @@ public class ${entity}DAO implements EntityDAO<$entity>{
     @Override
     public void delete(Object entity) {
         try {
-            long id  = (long) ReflectionManager.getObjectPrimaryKey(entity);
-            Field primaryKeyField = ReflectionManager.getIdField(${entity}.class);
+            ${entity} ${entityLowerCase} = (${entity}) entity;
+            long id = ${entityLowerCase}.get${capitalizedIdName}();
 
             PreparedStatement preparedStatement = connection.prepareStatement(DELETE_COMMAND);
             preparedStatement.setLong(1, id);
 
             preparedStatement.execute();
             preparedStatement.close();
-        } catch (IllegalAccessException | SQLException e){
+        } catch (SQLException e){
             throw new PersistenceException(e);
         }
     }
@@ -284,38 +310,62 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         }
     }
 
-    private long save${entity}(Object ${entityLowerCase}, Map<String, Object> fieldNamesWithValuesExceptPrimaryKey)
+    private long save${entity}(${entity} ${entityLowerCase})
             throws SQLException, IllegalAccessException{
 
         PreparedStatement statement = connection.prepareStatement(INSERT_COMMAND);
 
-        #foreach($name in $fieldNames)
-        statement.setObject($foreach.count, fieldNamesWithValuesExceptPrimaryKey.get("$name"));
-        #end
+    #set( $counter = 1 )
+    #foreach($name in $nonReferenceFields)
+        statement.setObject($counter, ${entityLowerCase}.get${name}());
+        #set( $counter = $counter + 1 )
+    #end
+    #foreach($name in $referenceFields)
+        #set( $index = $foreach.count - 1 )
+
+        ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entityLowerCase}.get${name}();
+        if(${name.toLowerCase()} != null){
+            statement.setObject($counter, ${name.toLowerCase()}.get${referenceFieldIds.get($index)}());
+        } else {
+        statement.setObject($counter, null);
+        }
+        #set( $counter = $counter + 1 )
+    #end
 
         statement.execute();
 
         ResultSet resultSet = statement.getGeneratedKeys();
 
         long newId = resultSet.getLong(1);
-        ReflectionManager.setObjectPrimaryKey(${entityLowerCase}, newId);
+        ${entityLowerCase}.set${capitalizedIdName}(newId);
 
         resultSet.close();
         return newId;
     }
 
-    private void update${entity}(Object ${entityLowerCase}, long id, Map<String, Object> fieldNamesWithValuesExceptPrimaryKey)
+    private void update${entity}(${entity} ${entityLowerCase})
             throws SQLException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
 
         PreparedStatement statement = connection.prepareStatement(UPDATE_COMMAND);
 
-        #foreach( $name in $fieldNames )
-        statement.setObject($foreach.count, fieldNamesWithValuesExceptPrimaryKey.get("$name"));
-        #if( !$foreach.hasNext )
-        #set( $nextIndex = ${foreach.count} +1 )
-        statement.setLong($nextIndex, id);
-        #end
-        #end
+    #set( $counter = 1 )
+    #foreach($name in $nonReferenceFields)
+        statement.setObject($counter, ${entityLowerCase}.get${name}());
+        #set( $counter = $counter + 1 )
+    #end
+    #foreach($name in $referenceFields)
+        #set( $index = $foreach.count - 1 )
+
+        ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entityLowerCase}.get${name}();
+        if(${name.toLowerCase()} != null){
+            statement.setObject($counter, ${name.toLowerCase()}.get${referenceFieldIds.get($index)}());
+        } else {
+            statement.setObject($counter, null);
+        }
+        #set( $counter = $counter + 1 )
+    #end
+
+        statement.setObject($counter, ${entityLowerCase}.get${capitalizedIdName}());
 
         statement.execute();
         statement.close();

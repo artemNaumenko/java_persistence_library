@@ -14,7 +14,7 @@ public class Person {
     private String name;
     private int age;
 
-    @ManyToOne(fetch = FetchType.LAZY, targetEntity = Department.class)
+    @ManyToOne(targetEntity = Department.class)
     private Department department;
 
     public Person(String surname, String name, int age) {
@@ -54,6 +54,9 @@ public class Person {
         return id;
     }
 
+    public void setId(long id) {
+        this.id = id;
+    }
 
     public Department getDepartment() {
         return department;

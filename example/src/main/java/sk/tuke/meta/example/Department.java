@@ -37,6 +37,14 @@ public class Department {
         this.code = code;
     }
 
+    public long getPk() {
+        return pk;
+    }
+
+    public void setPk(long pk) {
+        this.pk = pk;
+    }
+
     public String toString() {
         return String.format("Department %d: %s (%s)", pk, name, code);
     }
