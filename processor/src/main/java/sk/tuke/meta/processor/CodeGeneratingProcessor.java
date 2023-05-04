@@ -188,14 +188,35 @@ public class CodeGeneratingProcessor extends AbstractProcessor {
                     .map(name -> capitalize(name))
                     .toList();
 
+            List<String> referenceColumnWithLazyFetching = TableManager.getManyToOneVariablesLazyFetching(entity)
+                    .stream()
+                    .map(field -> {
+                        try {
+                            return TableManager.getColumnName(field);
+                        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                            throw new PersistenceException(e);
+                        }
+                    })
+                    .toList();
+
+            List<String> referenceFieldsWithLazyFetchingTypes = TableManager.getManyToOneVariablesLazyFetching(entity)
+                    .stream()
+                    .map(field -> field.asType().toString())
+                    .toList();
+
+            List<String> referenceFieldsWithLazyFetching = TableManager.getManyToOneVariablesLazyFetching(entity)
+                    .stream()
+                    .map(field -> TableManager.getFieldName(field))
+                    .map(name -> capitalize(name))
+                    .toList();
+
 
             VelocityContext context = new VelocityContext();
             context.put("package", entity.getEnclosingElement().toString());
             context.put("entity", entity.getSimpleName().toString());
             context.put("tableName", TableManager.getTableName(entity));
-            context.put("entityLowerCase", entity.getSimpleName().toString().toLowerCase());
-            context.put("idName", TableManager.getColumnName(TableManager.getIdField(entity)));
-            context.put("capitalizedIdName", capitalize(TableManager.getFieldName(TableManager.getIdField(entity))));
+            context.put("idColumnName", TableManager.getColumnName(TableManager.getIdField(entity)));
+            context.put("idFieldName", capitalize(TableManager.getFieldName(TableManager.getIdField(entity))));
             context.put("columnsNames", columnsNames);
             context.put("fieldNames", fieldNames);
             context.put("nonReferenceFields", nonReferenceFields);
@@ -208,6 +229,9 @@ public class CodeGeneratingProcessor extends AbstractProcessor {
             context.put("referenceColumnWithDefaultFetching", referenceColumnWithDefaultFetching);
             context.put("referenceFieldsWithDefaultFetchingTypes", referenceFieldsWithDefaultFetchingTypes);
             context.put("referenceFieldsWithDefaultFetching", referenceFieldsWithDefaultFetching);
+            context.put("referenceColumnWithLazyFetching", referenceColumnWithLazyFetching);
+            context.put("referenceFieldsWithLazyFetchingTypes", referenceFieldsWithLazyFetchingTypes);
+            context.put("referenceFieldsWithLazyFetching", referenceFieldsWithLazyFetching);
 
 
             template.merge(context, writer);

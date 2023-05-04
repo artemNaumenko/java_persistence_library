@@ -14,7 +14,7 @@ public class Person {
     private String name;
     private int age;
 
-    @ManyToOne(targetEntity = Department.class)
+    @ManyToOne(fetch = FetchType.LAZY, targetEntity = Department.class)
     private Department department;
 
     public Person(String surname, String name, int age) {

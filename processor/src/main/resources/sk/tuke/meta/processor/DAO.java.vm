@@ -27,15 +27,15 @@ public class ${entity}DAO implements EntityDAO<$entity>{
     private final Connection connection;
 
     private static final String SELECT_ALL_COMMAND = "SELECT * FROM '$tableName';";
-    private static final String SELECT_BY_ID_COMMAND = "SELECT * FROM '$tableName' WHERE ${idName}=?;";
+    private static final String SELECT_BY_ID_COMMAND = "SELECT * FROM '$tableName' WHERE ${idColumnName.toLowerCase()}=?;";
     private static final String SELECT_BY_COMMAND = "SELECT * FROM '$tableName' WHERE %s=?;";
     private static final String SELECT_BY_NULL_VALUE_COMMAND = "SELECT * FROM '$tableName' WHERE %s is null;";
 
-    private static final String DELETE_COMMAND = "DELETE FROM '${tableName}' WHERE ${idName}=?;";
+    private static final String DELETE_COMMAND = "DELETE FROM '${tableName}' WHERE ${idColumnName.toLowerCase()}=?;";
 
     private static final String INSERT_COMMAND = "INSERT INTO '$tableName' (#foreach($name in $columnsNames)${name}#if($foreach.hasNext), #end#end) VALUES (#foreach($name in $columnsNames)?#if($foreach.hasNext), #end#end)";
 
-    private static final String UPDATE_COMMAND = "UPDATE '$tableName' SET #foreach($name in $columnsNames)${name}=?#if($foreach.hasNext), #end#end WHERE ${idName}=?";
+    private static final String UPDATE_COMMAND = "UPDATE '$tableName' SET #foreach($name in $columnsNames)${name}=?#if($foreach.hasNext), #end#end WHERE ${idColumnName.toLowerCase()}=?";
 
     public ${entity}DAO(DAOPersistenceManager manager){
         this.manager = manager;
@@ -57,7 +57,7 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         }
     }
 
-    private ${entity} resultSetTo${entity}(ResultSet resultSet) throws SQLException {
+    private ${entity} resultSetTo${entity}(ResultSet resultSet) throws SQLException, InstantiationException, IllegalAccessException {
         ${entity} ${entity.toLowerCase()} = new ${entity}();
 
 
@@ -83,6 +83,13 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         }
     #end
 
+    #foreach($column in $referenceColumnWithLazyFetching)
+        #set( $index = $foreach.count - 1 )
+        long ${column.toLowerCase()}Id = resultSet.getLong("${column}");
+        ${referenceFieldsWithLazyFetchingTypes.get($index)} ${column.toLowerCase()}Proxy = ProxyManager.createProxy(connection, ${referenceFieldsWithLazyFetchingTypes.get($index)}.class, ${column.toLowerCase()}Id);
+        ${entity.toLowerCase()}.set${referenceFieldsWithLazyFetching.get($index)}(${column.toLowerCase()}Proxy);
+    #end
+
     }
 
     @Override
@@ -98,18 +105,18 @@ public class ${entity}DAO implements EntityDAO<$entity>{
                 return Optional.empty();
             }
 
-            $entity object = resultSetTo${entity}(resultSet);
+            $entity ${entity.toLowerCase()} = resultSetTo${entity}(resultSet);
 
             resultSet.close();
             preparedStatement.close();
 
-            if(object == null){
+            if(${entity.toLowerCase()} == null){
                 return Optional.empty();
             } else {
-                return Optional.of(object);
+                return Optional.of(${entity.toLowerCase()});
             }
 
-        } catch (SQLException e) {
+        } catch (SQLException | InstantiationException | IllegalAccessException e) {
             throw new PersistenceException(e);
         }
     }
@@ -127,14 +134,13 @@ public class ${entity}DAO implements EntityDAO<$entity>{
             List<$entity> list = new ArrayList<>();
 
             while (resultSet.next()){
-                $entity obj = ($entity) extractObjectFromResultSet(${entity}.class, resultSet);
-                list.add(obj);
+                $entity ${entity.toLowerCase()} = resultSetTo${entity}(resultSet);
+                list.add(${entity.toLowerCase()});
             }
 
             resultSet.close();
             return list;
-        } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
-                 NoSuchMethodException | InstantiationException e) {
+        } catch (SQLException | InstantiationException | IllegalAccessException e) {
             throw new PersistenceException(e);
         }
     }
@@ -156,16 +162,15 @@ public class ${entity}DAO implements EntityDAO<$entity>{
 
 
             while (resultSet.next()){
-                $entity obj = ($entity) extractObjectFromResultSet(${entity}.class, resultSet);
-                list.add(obj);
+                $entity ${entity.toLowerCase()} = resultSetTo${entity}(resultSet);
+                list.add(${entity.toLowerCase()});
             }
 
             resultSet.close();
             statement.close();
             return list;
 
-        } catch (SQLException | NoSuchFieldException | InvocationTargetException | IllegalAccessException |
-                 InstantiationException | NoSuchMethodException e) {
+        } catch (SQLException | InstantiationException | IllegalAccessException e) {
             throw new PersistenceException(e);
         }
     }
@@ -173,12 +178,12 @@ public class ${entity}DAO implements EntityDAO<$entity>{
     @Override
     public long save(Object entity) {
         try {
-            ${entity} ${entityLowerCase} = (${entity}) entity;
-            long id = ${entityLowerCase}.get${capitalizedIdName}();
+            ${entity} ${entity.toLowerCase()} = (${entity}) entity;
+            long id = ${entity.toLowerCase()}.get${idFieldName}();
 
         #foreach($name in $referenceFields)
             #set( $index = $foreach.count - 1 )
-            ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entityLowerCase}.get${name}();
+            ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entity.toLowerCase()}.get${name}();
             if(${name.toLowerCase()} != null) {
                 long ${name.toLowerCase()}Id = ${name.toLowerCase()}.get${referenceFieldIds.get($index)}();
                 if (${name.toLowerCase()}Id == 0) {
@@ -188,9 +193,9 @@ public class ${entity}DAO implements EntityDAO<$entity>{
 
         #end
             if(id == 0){
-                return save${entity}(${entityLowerCase});
+                return save${entity}(${entity.toLowerCase()});
             } else {
-                update${entity}(${entityLowerCase});
+                update${entity}(${entity.toLowerCase()});
                 return id;
             }
 
@@ -203,8 +208,8 @@ public class ${entity}DAO implements EntityDAO<$entity>{
     @Override
     public void delete(Object entity) {
         try {
-            ${entity} ${entityLowerCase} = (${entity}) entity;
-            long id = ${entityLowerCase}.get${capitalizedIdName}();
+            ${entity} ${entity.toLowerCase()} = (${entity}) entity;
+            long id = ${entity.toLowerCase()}.get${idFieldName}();
 
             PreparedStatement preparedStatement = connection.prepareStatement(DELETE_COMMAND);
             preparedStatement.setLong(1, id);
@@ -239,91 +244,20 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         return fileContent;
     }
 
-    private Object extractObjectFromResultSet(Class<?> type, ResultSet resultSet) throws SQLException,
-            NoSuchFieldException, IllegalAccessException, InvocationTargetException,
-            InstantiationException, NoSuchMethodException {
-
-        Map<String, Object> valuesMap = getMapOfValues(resultSet);
-
-        List<String> fieldNamesWithForeignKeys = ReflectionManager.getNameOfFieldsWithForeignKey(type);
-        updateMapOfValues(type, valuesMap, fieldNamesWithForeignKeys);
-
-        if(valuesMap.values().stream().allMatch(Objects::isNull)){
-            return null;
-        }
-
-        Constructor<?> constructor = type.getConstructor();
-        Object object = constructor.newInstance();
-
-        ReflectionManager.setObjectFields(object, valuesMap);
-
-        return object;
-    }
-
-    private Map<String, Object> getMapOfValues(ResultSet resultSet) throws SQLException {
-        Map<String, Object> map = new HashMap<>();
-
-        ResultSetMetaData metaData = resultSet.getMetaData();
-
-        for (int i = 1; i <= metaData.getColumnCount(); i++) {
-            Object value = resultSet.getObject(i);
-            String name = metaData.getColumnName(i);
-
-            map.put(name, value);
-        }
-
-        return map;
-    }
-
-    private void updateMapOfValues(Class<?> type, Map<String, Object> valuesMap, List<String> fieldNamesWithForeignKeys)
-            throws NoSuchFieldException, NoSuchMethodException, InvocationTargetException,
-                    IllegalAccessException, InstantiationException {
-
-        for (String fieldName : fieldNamesWithForeignKeys) {
-            Field field = type.getDeclaredField(fieldName);
-            Class<?> typeOfField = field.getType();
-            Object value = valuesMap.get(fieldName);
-
-            if(value == null){
-                valuesMap.put(fieldName, null);
-                continue;
-            }
-
-            Annotation annotation = field.getAnnotation(ManyToOne.class);
-            FetchType fetchType = (FetchType) annotation.getClass().getMethod("fetch").invoke(annotation);
-            if(fetchType.equals(FetchType.LAZY)){
-                Class<?> targetClass = (Class<?>) annotation.getClass().getMethod("targetEntity").invoke(annotation);
-                long id = (int) valuesMap.get(fieldName);
-
-                Object proxy = ProxyManager.createProxy(connection, targetClass, id);
-                valuesMap.put(fieldName, proxy);
-
-                continue;
-            }
-
-            Optional<?> optional = manager.getDAO(typeOfField).get((int) value);
-            if(optional.isEmpty()){
-                valuesMap.put(fieldName, null);
-            } else {
-                valuesMap.put(fieldName, optional.get());
-            }
-        }
-    }
-
-    private long save${entity}(${entity} ${entityLowerCase})
+    private long save${entity}(${entity} ${entity.toLowerCase()})
             throws SQLException, IllegalAccessException{
 
         PreparedStatement statement = connection.prepareStatement(INSERT_COMMAND);
 
     #set( $counter = 1 )
     #foreach($name in $nonReferenceFields)
-        statement.setObject($counter, ${entityLowerCase}.get${name}());
+        statement.setObject($counter, ${entity.toLowerCase()}.get${name}());
         #set( $counter = $counter + 1 )
     #end
     #foreach($name in $referenceFields)
         #set( $index = $foreach.count - 1 )
 
-        ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entityLowerCase}.get${name}();
+        ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entity.toLowerCase()}.get${name}();
         if(${name.toLowerCase()} != null){
             statement.setObject($counter, ${name.toLowerCase()}.get${referenceFieldIds.get($index)}());
         } else {
@@ -337,26 +271,26 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         ResultSet resultSet = statement.getGeneratedKeys();
 
         long newId = resultSet.getLong(1);
-        ${entityLowerCase}.set${capitalizedIdName}(newId);
+        ${entity.toLowerCase()}.set${idFieldName}(newId);
 
         resultSet.close();
         return newId;
     }
 
-    private void update${entity}(${entity} ${entityLowerCase})
+    private void update${entity}(${entity} ${entity.toLowerCase()})
             throws SQLException, InvocationTargetException, NoSuchMethodException, IllegalAccessException {
 
         PreparedStatement statement = connection.prepareStatement(UPDATE_COMMAND);
 
     #set( $counter = 1 )
     #foreach($name in $nonReferenceFields)
-        statement.setObject($counter, ${entityLowerCase}.get${name}());
+        statement.setObject($counter, ${entity.toLowerCase()}.get${name}());
         #set( $counter = $counter + 1 )
     #end
     #foreach($name in $referenceFields)
         #set( $index = $foreach.count - 1 )
 
-        ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entityLowerCase}.get${name}();
+        ${referenceFieldTypes.get($index)} ${name.toLowerCase()} = ${entity.toLowerCase()}.get${name}();
         if(${name.toLowerCase()} != null){
             statement.setObject($counter, ${name.toLowerCase()}.get${referenceFieldIds.get($index)}());
         } else {
@@ -365,7 +299,7 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         #set( $counter = $counter + 1 )
     #end
 
-        statement.setObject($counter, ${entityLowerCase}.get${capitalizedIdName}());
+        statement.setObject($counter, ${entity.toLowerCase()}.get${idFieldName}());
 
         statement.execute();
         statement.close();
