@@ -397,4 +397,22 @@ public class ReflectivePersistenceManager implements PersistenceManager {
             throw new PersistenceException(e);
         }
     }
+
+    @Override
+    public void startTransaction() throws SQLException {
+        connection.createStatement().execute("BEGIN TRANSACTION;");
+        System.out.println("Transaction was started.");
+    }
+
+    @Override
+    public void commitTransaction() throws SQLException {
+        connection.createStatement().execute("COMMIT;");
+        System.out.println("Transaction was successful. COMMIT command applied.");
+    }
+
+    @Override
+    public void rollbackTransaction() throws SQLException {
+        connection.createStatement().execute("ROLLBACK;");
+        System.out.println("Transaction was unsuccessful. ROLLBACK command applied.");
+    }
 }

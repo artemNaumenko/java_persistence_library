@@ -64,4 +64,10 @@ public interface PersistenceManager {
      * @param entity the entity to be deleted
      */
     void delete(Object entity);
+
+    void startTransaction() throws SQLException;
+
+    void commitTransaction() throws SQLException;
+
+    void rollbackTransaction() throws SQLException;
 }

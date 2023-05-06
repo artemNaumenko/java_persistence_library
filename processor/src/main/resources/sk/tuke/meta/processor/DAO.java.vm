@@ -235,8 +235,6 @@ public class ${entity}DAO implements EntityDAO<$entity>{
 
         String fileContent = stringBuilder.toString().trim();
 
-        System.out.println(fileContent);
-
         inputStream.close();
         inputStreamReader.close();
         reader.close();

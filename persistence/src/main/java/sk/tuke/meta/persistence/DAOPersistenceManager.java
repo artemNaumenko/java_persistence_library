@@ -3,6 +3,7 @@ package sk.tuke.meta.persistence;
 import javassist.util.proxy.ProxyObject;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,5 +70,23 @@ public class DAOPersistenceManager implements PersistenceManager {
     @Override
     public void delete(Object entity) {
         getDAO((entity.getClass())).delete(entity);
+    }
+
+    @Override
+    public void startTransaction() throws SQLException {
+        connection.createStatement().execute("BEGIN TRANSACTION;");
+        System.out.println("Transaction was started.");
+    }
+
+    @Override
+    public void commitTransaction() throws SQLException {
+        connection.createStatement().execute("COMMIT;");
+        System.out.println("Transaction was successful. COMMIT command applied.");
+    }
+
+    @Override
+    public void rollbackTransaction() throws SQLException {
+        connection.createStatement().execute("ROLLBACK;");
+        System.out.println("Transaction was unsuccessful. ROLLBACK command applied.");
     }
 }

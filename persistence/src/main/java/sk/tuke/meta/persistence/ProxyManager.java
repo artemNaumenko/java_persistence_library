@@ -15,7 +15,6 @@ public class ProxyManager {
 
     private static <T> void setProxyFields(T proxy, T object) throws IllegalAccessException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException {
         if(object == null){
-
             return;
         }
 
@@ -30,6 +29,9 @@ public class ProxyManager {
 
     public static <T> T createProxy(Connection connection, Class<T> targetClass, long id)
             throws InstantiationException, IllegalAccessException {
+
+
+
 
         ProxyFactory proxyFactory = new ProxyFactory();
         proxyFactory.setSuperclass(targetClass);
