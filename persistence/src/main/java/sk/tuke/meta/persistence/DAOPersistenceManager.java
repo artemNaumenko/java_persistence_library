@@ -81,12 +81,12 @@ public class DAOPersistenceManager implements PersistenceManager {
     @Override
     public void commitTransaction() throws SQLException {
         connection.createStatement().execute("COMMIT;");
-        System.out.println("Transaction was successful. COMMIT command applied.");
+        System.out.println("Transaction was successful. COMMIT command was applied.");
     }
 
     @Override
     public void rollbackTransaction() throws SQLException {
         connection.createStatement().execute("ROLLBACK;");
-        System.out.println("Transaction was unsuccessful. ROLLBACK command applied.");
+        System.out.println("Transaction was unsuccessful. ROLLBACK command was applied.");
     }
 }
