@@ -13,10 +13,6 @@ public class Main {
 
         Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
 
-        conn.createStatement().execute("DROP TABLE IF EXISTS PersonTable");
-        conn.createStatement().execute("DROP TABLE IF EXISTS Department");
-
-
         PersistenceManager manager = new GeneratedPersistenceManager(conn);
         manager.createTables();
 

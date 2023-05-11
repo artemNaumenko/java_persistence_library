@@ -90,6 +90,7 @@ public class ${entity}DAO implements EntityDAO<$entity>{
         ${entity.toLowerCase()}.set${referenceFieldsWithLazyFetching.get($index)}(${column.toLowerCase()}Proxy);
     #end
 
+        return ${entity.toLowerCase()};
     }
 
     @Override
