@@ -11,7 +11,7 @@ public aspect TransactionAspect {
         this.manager = manager;
     }
 
-    pointcut onAtomicOperation(): execution( @AtomicPersistenceOperatio * *(..));
+    pointcut onAtomicOperation(): execution( @sk.tuke.meta.persistence.AtomicPersistenceOperation * *(..));
     Object around(): onAtomicOperation(){
         try {
             manager.startTransaction();
